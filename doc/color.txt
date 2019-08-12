@@ -1,0 +1,55 @@
+The xterm 256 color standard has been in existence as of 1999 and is supported
+by pretty much all xterm emulating terminals and a large number of MUD clients.
+
+MTH provides a 256 color snippet in the color.c file. To use it tunnel output
+through the substitute_color() function before sending it to the client. The
+snippet defines 32 distinct colors using ^a to ^Z codes, as well as codes for
+using the full 256 color range.
+
+Details on use are found in color.c
+
+Xterm 256 color support is detected using the MTTS standard, and by checking
+for the -256color suffix when a client reports its generic terminal type. If
+this is the case it sets the COMM_FLAG_256COLORS bitflag on the d->comm_flags
+bitvector.
+
+In Lola 1.4 the implementation looks something like this:
+
+char *ansi_translate_text( CHAR_DATA *ch, char *text_in )
+{
+        char ansi_translate_buffer[MAX_STRING_LENGTH];
+        static char xterm_translate_buffer[MAX_STRING_LENGTH];
+        char *pti, *pto;
+        int color;
+
+        pti  = text_in;
+        pto  = ansi_translate_buffer;
+
+        if (ch->desc == NULL)
+        {
+                return "";
+        }
+
+        color = 0;
+
+        if (HAS_BIT(ch->pcdata->vt100_flags, VT100_ANSI))
+        {
+                color = 16;
+
+                if (HAS_BIT(ch->desc->comm_flags, COMM_FLAG_256COLORS))
+                {
+                        color = 256;
+                }
+        }
+
+        substitute_color(ansi_translate_buffer, xterm_translate_buffer, color);
+
+        return( xterm_translate_buffer );
+}
+
+One issue is that the player cannot explicitly select ansi or xterm color mode.
+
+One solution is to allow the player to set their color configuration to either
+0, 1, 16, or 256. If set to 0 color is disabled, if set to 16 ansi colors are
+used, if set to 256 xterm colors are used, and if set to 1 the mud will use
+automatic color mode detection.

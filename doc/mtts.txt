@@ -1,0 +1,10 @@
+The Mud Terminal Type Standard is used to communicate generic terminal
+capabilities. The specification is available at:
+
+http://tintin.sourceforge.net/mtts/
+
+The MTTS bitvector will be automatically copied to d->mtts.
+
+MTH 1.5 will automatically handle the NEW-ENVIRON IPADDRESS variable which
+is used by mudportal and possibly other proxies to send the real IP address
+of the connection.

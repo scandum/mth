@@ -1,0 +1,125 @@
+Arachnos is an Intermud chat standard utilizing both MSSP and MSDP. For it to
+work you need to have an Arachnos spider connect to your MUD. If you're listed
+on TMC the spider should find you sooner or later, otherwise shoot me an email.
+
+The Arachnos standard is available here:
+
+http://tintin.sourceforge.net/protocols/msdp/arachnos
+
+To get the spider to recognise that you have Arachnos support you should update
+MSSP and set the INTERMUD variable to Arachnos. 
+
+By default MTH only includes the basics for a developer channel. In Lola 1.4 the
+code for developers to use the channel is as following:
+
+void do_devtalk (CHAR_DATA * ch, char *argument)
+{
+        DESCRIPTOR_DATA *d;
+
+        if (argument[0] == '\0')
+        {
+                send_to_char ("Devtalk what?\n\r", ch);
+                return;
+        }
+
+        for (d = mud->f_desc ; d ; d = d->next)
+        {
+                msdp_update_var_instant(d, "ARACHNOS_DEVEL", "%c\001%s\002%s\001%s\002%s%c",
+                        MSDP_TABLE_OPEN,
+                                "MSG_USER", ch->name,
+                                "MSG_BODY", argument,
+                        MSDP_TABLE_CLOSE);
+        }
+        return;
+}
+
+When an Arachnos DEVEL message is received from a spider the following
+code is called:
+
+void arachnos_devel(char *fmt, ...)
+{
+        PLAYER_GAME *fpl;
+        char buf[MAX_STRING_LENGTH];
+        va_list args;
+
+        va_start(args, fmt);
+        vsprintf(buf, fmt, args);
+        va_end(args);
+
+        for (fpl = mud->f_player ; fpl ; fpl = fpl->next)
+        {
+                if (fpl->ch->level < MAX_LEVEL)
+                {
+                        continue;
+                }
+                ch_printf_color(fpl->ch, "{128}%s\n\r", buf);
+        }
+        return;
+}
+
+All other aspects are handled in msdp.c. If you want additional channels you
+need to add them yourself and have a spider available to link two or more
+MUDs.
+
+
+In addition Arachnos allows the sending of MUDLIST messages which contain
+updates of other MUDs available on the network. This is handled as following
+in Lola 1.4:
+
+char *mudlist[50];
+
+void do_mudlist (CHAR_DATA * ch, char *argument)
+{
+        int i;
+
+        push_call("do_mudlist(%p,%p)",ch,argument);
+
+        ch_printf_color(ch, "{128}%18.18s %14.14s %5.5s %17.17s %17.17s %4.4s\n\r", "name", "host", "port", "last update", "boot time", "#");
+
+        for (i = 0 ; i < 50 ; i++)
+        {
+                if (mudlist[i])
+                {
+                        ch_printf_color(ch, "{128}%s\n\r", mudlist[i]);
+                }
+        }
+}
+
+void arachnos_mudlist(char *fmt, ...)
+{
+        char buf[MAX_STRING_LENGTH];
+
+        int i;
+        va_list args;
+
+        va_start(args, fmt);
+        vsprintf(buf, fmt, args);
+        va_end(args);
+
+        if (mudlist[0] && !strncmp(mudlist[0], buf, 18))
+        {
+                RESTRING(mudlist[0], buf);
+                return;
+        }
+
+        STRFREE(mudlist[49]);
+
+        for (i = 1 ; i < 50 ; i++)
+        {
+                if (mudlist[i] == NULL || !strncmp(mudlist[i], buf, 18))
+                {
+                        memmove(&mudlist[1], &mudlist[0], i * sizeof(char *));
+                        break;
+                }
+        }
+
+        mudlist[0] = STRALLOC(buf);
+
+        return;
+}
+
+What this code does is maintain a list of 50 muds, if a new update is received
+the code checks if the mud is already in the list, if so it's removed, and
+the new update is placed at the beginning of the list.
+
+MUDs that are no longer connected will move to the bottom of the list.

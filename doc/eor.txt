@@ -1,0 +1,25 @@
+The End Of Record option provides the means to mark the end of a prompt
+so clients know that all data has arrived and can be displayed. 
+
+In order to enable EOR edit tables.c, find the EOR entry, and change the
+flag from 0 to ANNOUNCE_WILL. This change will cause the announce_support()
+function to send IAC WILL EOR when called. 
+
+If in response IAC DO EOR is received from the client the COMM_FLAG_EOR
+flag will be set on d->comm_flags. When sending a prompt and other lines
+not terminated by a newline you should check if COMM_FLAG_EOR is set,
+and if the case call send_eor() after sending the prompt, which will
+send IAC EOR to the client.
+
+In Lola 1.4 this looks like this, check for '\n' instead of '\r' if your
+mud uses \r\n rather than \n\r as the new line marker:
+
+     if (d->outtop)
+     {
+          if (d->outbuf[d->outtop - 1] != '\r')
+          {
+               d->outbuf[d->outtop++] = IAC;
+               d->outbuf[d->outtop++] = EOR;
+          }
+          write_to_port(d);
+     }

@@ -1,0 +1,15 @@
+The MSSP specification is available at:
+
+http://tintin.sourceforge.net/mssp
+
+In order to announce MSSP support you need to send IAC WILL TELOPT_MSSP to
+each new connection, unless you call announce_support() which will announce
+all supported protocols as defined in tables.c.
+
+The next step is to update the process_do_mssp() function in telopt.c and
+change the various fields so they match your MUD.MSSP data with your MUD's
+information.
+
+If your MUD doesn't provide you with global information about the number of
+rooms and other such data, it's suggested to incorporate MTH's mud_data
+structure.

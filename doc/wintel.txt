@@ -1,0 +1,9 @@
+Whenever Windows telnet receives a telnet negotiation it will automatically
+switch itself to character mode, which effectively kills local echo, with no
+means of disabling it remotely.
+
+MTH will automatically detect Windows telnet and set COMM_FLAG_REMOTEECHO
+and handle the remote echo for you.
+
+MTH will also set COMM_FLAG_PASSWORD when using the echo_on() and echo_off()
+functions to print a * instead of the actual character.

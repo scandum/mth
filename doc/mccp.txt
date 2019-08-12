@@ -1,0 +1,40 @@
+Adding MCCP:
+
+1. When booting up the mud you should allocate the memory of mud->mccp_buf.
+
+mud->mccp_buf = calloc(sizeof(char), COMPRESS_BUF_SIZE);
+
+2. Send IAC WILL TELOPT_MCCP2 when there is a new connection in comm.c before
+   the greeting. You can also use announce_support() to send announcements
+   for all supported protocols as defined in tables.c.
+
+void new_descriptor(void)
+{
+	write_to_descriptor(dnew, "\0xFF\0xFB\0x56", 3);
+}
+
+3. When closing a socket make sure to call end_mccp2 and end_mccp3()
+
+void close_socket( DESCRIPTOR_DATA * dclose )
+{
+	end_mccp2(dclose);
+	end_mccp3(dclose);
+}
+
+4. In write_to_descriptor(int desc, char *txt, int length ) Add the following call:
+
+bool write_to_descriptor( DESCRIPTOR_DATA *d, char *txt, int length )
+{
+        if (d->descriptor)
+        {
+                if (d->mccp2)
+                {
+                        write_mccp2(d, txt, length);
+                }
+                else
+                {
+                        write(d->descriptor, txt, length);
+                }
+        }
+}
+

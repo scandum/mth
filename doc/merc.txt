@@ -1,0 +1,54 @@
+1. Copy telopt.c tables.c msdp.c and telnet.h to your mud's source directory.
+
+2. Update the macro and external function calls in tables.c to use the
+   ones that your mud uses.
+
+3. Update the header file in your mud with the data provided in mud.h.
+   This may be a bit of work to merge them correctly. If your mud
+   already has most of the definitions you'd want to update telopt.c
+   instead.
+
+4. Update your Makefile and add tables.o msdp.o and telopt.o
+
+5. Next you need to edit comm.c to add a call to translate telopts. In
+   Merc 2.2 this would go as following:
+
+   find the line that states:
+
+   nRead = read( d->descriptor, d->inbuf + iStart, sizeof( d->inbuf ) - 10 - iStart );
+
+   And replace the for loop it's in with the following:
+
+   for( ;; )
+   {
+      char bufin[MAX_INPUT_LENGTH];
+      int nRead;
+
+      nRead = read( d->descriptor, bufin, sizeof( bufin ) - 10 - iStart );
+      if( nRead > 0 )
+      {
+         iStart += translate_telopts(d, bufin, nRead, d->inbuf + iStart);
+
+         if( d->inbuf[iStart - 1] == '\n' )
+            break;
+      }
+      else if( nRead == 0 )
+      {
+         log_string( "EOF encountered on read." );
+         return FALSE;
+      }
+      else if( errno == EWOULDBLOCK )
+         break;
+      else
+      {
+         perror( "Read_from_descriptor" );
+         return FALSE;
+      }
+   }
+
+
+6. Define the mud_data structure from mud.h and populate it with data in db.c
+   during boot time. Most of this data is already gathered in db.c, but not
+   globally available.
+
+7. Read the other documentation files for further instructions.

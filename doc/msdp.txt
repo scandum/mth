@@ -1,0 +1,119 @@
+The MSDP specification is available at:
+
+http://tintin.sourceforge.net/protocols/msdp
+
+MSDP is a data protocol, typically used to create client side user interfaces.
+
+In order for MSDP to work you'll have to copy the MSDP data structures and
+functions from mud.h.
+
+When the MUD is booted up you also need to initialize the MSDP table, this is
+done by calling init_msdp_table().
+
+When a client connects MSDP will be automatically negotiated if it's enabled
+in tables.c, which it is by default. If the client agrees MTH will initialize
+an MSDP table structure for the player.
+
+To add MSDP variables update the msdp table at the end of the msdp.c file,
+this table must be alphabetically sorted.
+
+To update MSDP variables there are two functions, msdp_update_var() as well
+as msdp_update_var_instant(). msdp_update_var_instant() will send out the
+variable instantly, this is useful for sending room info updates for auto
+mappers, or communication channel updates. For health updates it's suggested
+to use msdp_update_var() as overwriting the variable before the update is
+actually send doesn't result in the loss of important data.
+
+For example when MSDP is first enabled the server can set the specification it
+uses:
+
+msdp_update_var(d, "SPECIFICATION", "%s", "http://tintin.sourceforge.net/protocols/msdp");
+
+This won't be automatically send to the client, the client will have to
+request single or automatic updates, as detailed in the MSDP specification.
+
+In order to send updated MSDP variables to the client you need to call
+msdp_update() at regular intervals, in Lola that's done once a second
+in update.c as following:
+
+        for (d = mud->f_desc ; d ; d = d->next)
+        {
+                if (HAS_BIT(d->comm_flags, COMM_FLAG_MSDPUPDATE))
+                {
+                        msdp_send_update(d);
+                }
+        }
+
+
+Sending a ROOM update in char_to_room for automappers can look as following:
+
+                if (ch->desc->msdp_data)
+                {
+                        char exits[MAX_INPUT_LENGTH];
+                        int exit;
+
+                        sprintf(exits, "%c", MSDP_OPEN);
+
+                        for (exit = 0 ; exit < 6 ; exit++)
+                        {
+                                if (is_valid_exit(ch, ch->in_room, exit))
+                                {
+                                        cat_sprintf(exits, "\001%s\002%d", dir_name_short[exit], ch->in_room->exit[exit]->to_room);
+                                }
+                        }
+                        cat_sprintf(exits, "%c", MSDP_CLOSE);
+
+                        msdp_update_var_instant(ch->desc, "ROOM", "%c\001%s\002%d\001%s\002%s\001%s\002%s\001%s\002%s\001%s\002%s%c",
+                                MSDP_TABLE_OPEN,
+                                        "VNUM", ch->in_room->vnum,
+                                        "NAME", ch->in_room->name,
+                                        "AREA", ch->in_room->area->name,
+                                        "TERRAIN", sector_table[ch->in_room->sector_type].sector_name,
+                                        "EXITS", exits,
+                                MSDP_TABLE_CLOSE);
+
+                }
+
+The most efficient approach is to update variables as they change, this can
+be somewhat messy because you'll have dozens of variable updates spread out
+over the source code. A less efficient but more centralized approach is to
+call an update routine every second and update all variables. MTH will only
+mark the variable as updated if it actually changed. The following code is
+taken from Lola 1.4.
+
+void msdp_update(void)
+{
+        DESCRIPTOR_DATA *d;
+
+        for (d = mud->f_desc ; d ; d = d->next)
+        {
+                if (d->msdp_data == NULL || CH(d) == NULL)
+                {
+                        continue;
+                }
+
+                msdp_update_var(d, "ALIGNMENT", "%d", CH(d)->alignment);
+                msdp_update_var(d, "EXPERIENCE", "%d", CH(d)->pcdata->exp);
+                msdp_update_var(d, "EXPERIENCE_MAX", "%d", exp_level(CH(d)->class, CH(d)->level) - exp_level(CH(d)->class, CH(d)->level-1));
+                msdp_update_var(d, "HEALTH", "%d", CH(d)->hit);
+                msdp_update_var(d, "HEALTH_MAX", "%d", CH(d)->max_hit);
+                msdp_update_var(d, "LEVEL", "%d", CH(d)->level);
+                msdp_update_var(d, "MANA", "%d", CH(d)->mana);
+                msdp_update_var(d, "MANA_MAX", "%d", CH(d)->max_mana);
+                msdp_update_var(d, "MONEY", "%d", CH(d)->gold);
+                msdp_update_var(d, "MOVEMENT", "%d", CH(d)->move);
+                msdp_update_var(d, "MOVEMENT_MAX", "%d", CH(d)->max_move);
+
+                if (HAS_BIT(d->comm_flags, COMM_FLAG_MSDPUPDATE))
+                {
+                        msdp_send_update(d);
+                }
+        }
+}
+
+In short, for MSDP to work you need to:
+
+1) Call init_msdp_table() at startup.
+2) Add variables you want added to the msdp_table at the bottom of msdp.c
+3) Update variables using  msdp_update_var() and msdp_update_var_instant().
+4) Call msdp_send_update(d) periodically to send out updated variables.

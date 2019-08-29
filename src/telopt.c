@@ -751,7 +751,7 @@ int process_do_msdp( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 	for (index = 0 ; index < mud->msdp_table_size ; index++)
 	{
-		d->msdp_data[index] = (struct msdp_data *) calloc(1, sizeof(struct msdp_data *));
+		d->msdp_data[index] = (struct msdp_data *) calloc(1, sizeof(struct msdp_data));
 
 		d->msdp_data[index]->flags = msdp_table[index].flags;
 		d->msdp_data[index]->value = strdup("");

@@ -4,7 +4,7 @@ CC      = gcc -Wall -g
 
 OUTFILE = mth
 
-OBJECTS01 =   telopt.o mud.o tables.o msdp.o utils.o net.o
+OBJECTS01 =   telopt.o msdp.o mth.o net.o mud.o
 
 $(OUTFILE): $(OBJECTS01) 
 	$(CC) $(CFLAGS) $(OBJECTS01) -o $(OUTFILE) $(LIBS)

@@ -1,14 +1,14 @@
-1. Copy telopt.c tables.c msdp.c and telnet.h to your mud's source directory.
+1. Copy msdp.c mth.c mth.h and telopt.c to your mud's source directory.
 
-2. Update the macro and external function calls in tables.c to use the
-   ones that your mud uses.
+2. Update the macro and external function calls to use the ones that
+   your mud uses.
 
 3. Update the header file in your mud with the data provided in mud.h.
    This may be a bit of work to merge them correctly. If your mud
    already has most of the definitions you'd want to update telopt.c
    instead.
 
-4. Update your Makefile and add tables.o msdp.o and telopt.o
+4. Update your Makefile and add msdp.o, mth.o and telopt.o
 
 5. Next you need to edit comm.c to add a call to translate telopts. In
    Merc 2.2 this would go as following:
@@ -46,9 +46,10 @@
       }
    }
 
+6. Call init_mth() when the mud boots up.
 
-6. Define the mud_data structure from mud.h and populate it with data in db.c
-   during boot time. Most of this data is already gathered in db.c, but not
-   globally available.
+7. Call init_mth_socket() when a new socket is created.
 
-7. Read the other documentation files for further instructions.
+8. Call uninit_mth_socket() when a socket is disconnected or before a copyover.
+
+9. Read the other documentation files for additional topics.

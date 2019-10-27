@@ -1,17 +1,14 @@
 /***************************************************************************
- * Permission is hereby granted to use this code without restrictions as   *
- * long as this permission and the copyright notice below is included.     *
- *                                                                         *
- * Mud Telopt Handler 1.5 Copyright 2009-2019 Igor van den Hoven           *
+ * Mud Telopt Handler 1.5 by Igor van den Hoven                  2009-2019 *
  ***************************************************************************/
 
 #include "mud.h"
-#include <sys/socket.h>
+#include "mth.h"
 
+#include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
-
 #include <sys/time.h>
 
 
@@ -129,13 +126,22 @@ void poll_port(void)
 
 		if (mud->client->descriptor)
 		{
+			// MTH addition
+
+			if (HAS_BIT(mud->client->mth->comm_flags, COMM_FLAG_DISCONNECT))
+			{
+				close_port_connection();
+		
+				return;
+			}
+
 			FD_SET(mud->client->descriptor, &readfds);
 			FD_SET(mud->client->descriptor, &writefds);
 			FD_SET(mud->client->descriptor, &excfds);
 
-			// include this
+			// MTH addition
 
-			if (HAS_BIT(mud->client->comm_flags, COMM_FLAG_MSDPUPDATE))
+			if (HAS_BIT(mud->client->mth->comm_flags, COMM_FLAG_MSDPUPDATE))
 			{
 				msdp_send_update(mud->client);
 			}
@@ -167,12 +173,12 @@ void process_port_connections(fd_set *read_set, fd_set *write_set, fd_set *exc_s
 	{
 		if (FD_ISSET(mud->client->descriptor, exc_set))
 		{
-			SET_BIT(mud->client->comm_flags, COMM_FLAG_DISCONNECT);
+			SET_BIT(mud->client->mth->comm_flags, COMM_FLAG_DISCONNECT);
 			close_port_connection();
 		}
 		else if (FD_ISSET(mud->client->descriptor, read_set) && process_port_input() < 0)
 		{
-			SET_BIT(mud->client->comm_flags, COMM_FLAG_DISCONNECT);
+			SET_BIT(mud->client->mth->comm_flags, COMM_FLAG_DISCONNECT);
 			close_port_connection();
 		}
 	}
@@ -180,18 +186,17 @@ void process_port_connections(fd_set *read_set, fd_set *write_set, fd_set *exc_s
 
 void close_port_connection()
 {
-		log_printf("Closing connection to client D%d", mud->client->descriptor);
+	log_printf("Closing connection to client D%d", mud->client->descriptor);
 
-		end_mccp2(mud->client);
-		end_mccp3(mud->client);
+	// MTH addition
 
-		close(mud->client->descriptor);
+	uninit_mth_socket(mud->client);
 
-		mud->client->descriptor = 0;
-		mud->client->comm_flags = 0;
+	close(mud->client->descriptor);
 
-		RESTRING(mud->client->host, "");
-		RESTRING(mud->client->terminal_type, "");
+	mud->client->descriptor = 0;
+
+	RESTRING(mud->client->host, "");
 }
 
 int process_port_input(void)
@@ -280,9 +285,11 @@ int port_new(int s)
 	RESTRING(mud->client->host, inet_ntoa(sock.sin_addr));
 	mud->client->descriptor = fd;
 
-	descriptor_printf(mud->client, "Welcome to the MTH test server.\r\n");
+	// MTH addition
 
-	announce_support(mud->client);
+	init_mth_socket(mud->client);
+
+	descriptor_printf(mud->client, "Welcome to the MTH test server.\r\n");
 
 	return fd;
 }

@@ -33,7 +33,7 @@ This won't be automatically send to the client, the client will have to
 request single or automatic updates, as detailed in the MSDP specification.
 
 In order to send updated MSDP variables to the client you need to call
-msdp_update() at regular intervals, in Lola that's done once a second
+msdp_update() at regular intervals, in LoLa 1.4 that's done once a second
 in update.c as following:
 
         for (d = mud->f_desc ; d ; d = d->next)
@@ -79,7 +79,7 @@ be somewhat messy because you'll have dozens of variable updates spread out
 over the source code. A less efficient but more centralized approach is to
 call an update routine every second and update all variables. MTH will only
 mark the variable as updated if it actually changed. The following code is
-taken from Lola 1.4.
+taken from LoLa 1.4.
 
 void msdp_update(void)
 {
@@ -116,4 +116,4 @@ In short, for MSDP to work you need to:
 1) Call init_msdp_table() at startup.
 2) Add variables you want added to the msdp_table at the bottom of msdp.c
 3) Update variables using  msdp_update_var() and msdp_update_var_instant().
-4) Call msdp_send_update(d) periodically to send out updated variables.
+4) Call msdp_send_update(d) periodically to send updated variables.

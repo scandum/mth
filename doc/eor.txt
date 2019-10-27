@@ -11,7 +11,7 @@ not terminated by a newline you should check if COMM_FLAG_EOR is set,
 and if the case call send_eor() after sending the prompt, which will
 send IAC EOR to the client.
 
-In Lola 1.4 this looks like this, check for '\n' instead of '\r' if your
+In LoLa 1.4 this looks like this, check for '\n' instead of '\r' if your
 mud uses \r\n rather than \n\r as the new line marker:
 
      if (d->outtop)

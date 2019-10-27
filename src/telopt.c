@@ -1,15 +1,41 @@
 /***************************************************************************
- * Permission is hereby granted to use this code without restrictions as   *
- * long as this permission and the copyright notice below is included.     *
- *                                                                         *
- * Mud Telopt Handler 1.5 Copyright 2009-2019 Igor van den Hoven           *
+ * Mud Telopt Handler 1.5 by Igor van den Hoven                  2009-2019 *
  ***************************************************************************/
 
 #include "mud.h"
-#include "telnet.h"
+#include "mth.h"
 
 #define TELOPT_DEBUG 1
 
+void        debug_telopts            ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_do_eor           ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_will_ttype       ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_ttype_is      ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_naws          ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_will_new_environ ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_new_environ   ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_do_charset       ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_charset       ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_do_mssp          ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_do_msdp          ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_msdp          ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_do_gmcp          ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_gmcp          ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_do_mccp2         ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_dont_mccp2       ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         skip_sb                  ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+
+void        end_mccp2                ( DESCRIPTOR_DATA *d );
+
+int         start_mccp2              ( DESCRIPTOR_DATA *d );
+void        process_mccp2            ( DESCRIPTOR_DATA *d );
+
+void        end_mccp3                ( DESCRIPTOR_DATA *d );
+int         process_do_mccp3         ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+int         process_sb_mccp3         ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen );
+
+void        send_ga                  ( DESCRIPTOR_DATA *d );
+void        send_eor                 ( DESCRIPTOR_DATA *d );
 
 struct telopt_type
 {
@@ -82,6 +108,9 @@ void unannounce_support( DESCRIPTOR_DATA *d )
 {
 	int i;
 
+	end_mccp2(d);
+	end_mccp3(d);
+
 	for (i = 0 ; i < 255 ; i++)
 	{
 		if (telnet_table[i].flags)
@@ -111,51 +140,51 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 	pti = src;
 	pto = out + outlen;
 
-	if (srclen > 0 && d->mccp3)
+	if (srclen > 0 && d->mth->mccp3)
 	{
-		d->mccp3->next_in   = pti;
-		d->mccp3->avail_in  = srclen;
+		d->mth->mccp3->next_in   = pti;
+		d->mth->mccp3->avail_in  = srclen;
 
-		d->mccp3->next_out   = mud->mccp_buf;
-		d->mccp3->avail_out  = mud->mccp_len;
+		d->mth->mccp3->next_out   = mud->mccp_buf;
+		d->mth->mccp3->avail_out  = mud->mccp_len;
 
 		inflate:
 
-		switch (inflate(d->mccp3, Z_SYNC_FLUSH))
+		switch (inflate(d->mth->mccp3, Z_SYNC_FLUSH))
 		{
 			case Z_BUF_ERROR:
-				if (d->mccp3->avail_out == 0)
+				if (d->mth->mccp3->avail_out == 0)
 				{
 					mud->mccp_len *= 2;
 					mud->mccp_buf  = (unsigned char *) realloc(mud->mccp_buf, mud->mccp_len);
 
-					d->mccp3->avail_out = mud->mccp_len / 2;
-					d->mccp3->next_out  = mud->mccp_buf + mud->mccp_len / 2;
+					d->mth->mccp3->avail_out = mud->mccp_len / 2;
+					d->mth->mccp3->next_out  = mud->mccp_buf + mud->mccp_len / 2;
 
 					goto inflate;
 				}
 				else
 				{
 					descriptor_printf(d, "%c%c%c", IAC, DONT, TELOPT_MCCP3);
-					inflateEnd(d->mccp3);
-					free(d->mccp3);
-					d->mccp3 = NULL;
+					inflateEnd(d->mth->mccp3);
+					free(d->mth->mccp3);
+					d->mth->mccp3 = NULL;
 					srclen = 0;
 				}
 				break;
 
 			case Z_OK:
-				if (d->mccp3->avail_out == 0)
+				if (d->mth->mccp3->avail_out == 0)
 				{
 					mud->mccp_len *= 2;
 					mud->mccp_buf  = (unsigned char *) realloc(mud->mccp_buf, mud->mccp_len);
 
-					d->mccp3->avail_out = mud->mccp_len / 2;
-					d->mccp3->next_out  = mud->mccp_buf + mud->mccp_len / 2;
+					d->mth->mccp3->avail_out = mud->mccp_len / 2;
+					d->mth->mccp3->next_out  = mud->mccp_buf + mud->mccp_len / 2;
 
 					goto inflate;
 				}
-				srclen = d->mccp3->next_out - mud->mccp_buf;
+				srclen = d->mth->mccp3->next_out - mud->mccp_buf;
 				pti = mud->mccp_buf;
 
 				if (srclen + outlen > MAX_INPUT_LENGTH)
@@ -167,14 +196,14 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 			case Z_STREAM_END:
 				log_descriptor_printf(d, "MCCP3: Compression end, disabling MCCP3.");
 
-				skip = d->mccp3->next_out - mud->mccp_buf;
+				skip = d->mth->mccp3->next_out - mud->mccp_buf;
 
-				pti += (srclen - d->mccp3->avail_in);
-				srclen = d->mccp3->avail_in;
+				pti += (srclen - d->mth->mccp3->avail_in);
+				srclen = d->mth->mccp3->avail_in;
 
-				inflateEnd(d->mccp3);
-				free(d->mccp3);
-				d->mccp3 = NULL;
+				inflateEnd(d->mth->mccp3);
+				free(d->mth->mccp3);
+				d->mth->mccp3 = NULL;
 
 				while (skip + srclen + 1 > mud->mccp_len)
 				{
@@ -189,9 +218,9 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 			default:
 				log_descriptor_printf(d, "MCCP3: Compression error, disabling MCCP3.");
 				descriptor_printf(d, "%c%c%c", IAC, DONT, TELOPT_MCCP3);
-				inflateEnd(d->mccp3);
-				free(d->mccp3);
-				d->mccp3 = NULL;
+				inflateEnd(d->mth->mccp3);
+				free(d->mth->mccp3);
+				d->mth->mccp3 = NULL;
 				srclen = 0;
 				break;
 		}
@@ -199,21 +228,21 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 
 	// packet patching
 
-	if (d->teltop)
+	if (d->mth->teltop)
 	{
-		if (d->teltop + srclen + 1 < MAX_INPUT_LENGTH)
+		if (d->mth->teltop + srclen + 1 < MAX_INPUT_LENGTH)
 		{
-			memcpy(d->telbuf + d->teltop, pti, srclen);
+			memcpy(d->mth->telbuf + d->mth->teltop, pti, srclen);
 
-			srclen += d->teltop;
+			srclen += d->mth->teltop;
 
-			pti = (unsigned char *) d->telbuf;
+			pti = (unsigned char *) d->mth->telbuf;
 		}
 		else
 		{
 			// You can close the socket here for input spamming
 		}
-		d->teltop = 0;
+		d->mth->teltop = 0;
 	}
 
 	while (srclen > 0)
@@ -292,8 +321,8 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 				}
 				else
 				{
-					memcpy(d->telbuf, pti, srclen);
-					d->teltop = srclen;
+					memcpy(d->mth->telbuf, pti, srclen);
+					d->mth->teltop = srclen;
 
 					*pto = 0;
 					return strlen((char *) out);
@@ -324,7 +353,7 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 
 	// handle remote echo for windows telnet
 
-	if (HAS_BIT(d->comm_flags, COMM_FLAG_REMOTEECHO))
+	if (HAS_BIT(d->mth->comm_flags, COMM_FLAG_REMOTEECHO))
 	{
 		skip = strlen((char *) out);
 
@@ -343,7 +372,7 @@ int translate_telopts(DESCRIPTOR_DATA *d, unsigned char *src, int srclen, unsign
 					break;
 
 				default:
-					if (HAS_BIT(d->comm_flags, COMM_FLAG_PASSWORD))
+					if (HAS_BIT(d->mth->comm_flags, COMM_FLAG_PASSWORD))
 					{
 						write_to_descriptor(d, "*", 1);
 					}
@@ -421,7 +450,7 @@ void debug_telopts( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 void send_echo_off( DESCRIPTOR_DATA *d )
 {
-	SET_BIT(d->comm_flags, COMM_FLAG_PASSWORD);
+	SET_BIT(d->mth->comm_flags, COMM_FLAG_PASSWORD);
 
 	descriptor_printf(d, "%c%c%c", IAC, WILL, TELOPT_ECHO);
 }
@@ -432,7 +461,7 @@ void send_echo_off( DESCRIPTOR_DATA *d )
 
 void send_echo_on( DESCRIPTOR_DATA *d )
 {
-	DEL_BIT(d->comm_flags, COMM_FLAG_PASSWORD);
+	DEL_BIT(d->mth->comm_flags, COMM_FLAG_PASSWORD);
 
 	descriptor_printf(d, "%c%c%c", IAC, WONT, TELOPT_ECHO);
 }
@@ -443,7 +472,7 @@ void send_echo_on( DESCRIPTOR_DATA *d )
 
 void send_eor( DESCRIPTOR_DATA *d )
 {
-	if (HAS_BIT(d->comm_flags, COMM_FLAG_EOR))
+	if (HAS_BIT(d->mth->comm_flags, COMM_FLAG_EOR))
 	{
 		descriptor_printf(d, "%c%c", IAC, EOR);
 	}
@@ -455,18 +484,18 @@ void send_eor( DESCRIPTOR_DATA *d )
 
 int process_do_eor( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 {
-	SET_BIT(d->comm_flags, COMM_FLAG_EOR);
+	SET_BIT(d->mth->comm_flags, COMM_FLAG_EOR);
 
 	return 3;
 }
 
 /*
-	Terminal Type negotiation - make sure d->terminal_type is initialized.
+	Terminal Type negotiation - make sure d->mth->terminal_type is initialized.
 */
 
 int process_will_ttype( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 {
-	if (*d->terminal_type == 0)
+	if (*d->mth->terminal_type == 0)
 	{
 		// Request the first three terminal types to see if MTTS is supported, next reset to default.
 
@@ -507,28 +536,28 @@ int process_sb_ttype_is( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 					log_descriptor_printf(d, "INFO IAC SB TTYPE RCVD VAL %s.", val);
 				}
 
-				if (*d->terminal_type == 0)
+				if (*d->mth->terminal_type == 0)
 				{
-					RESTRING(d->terminal_type, val);
+					RESTRING(d->mth->terminal_type, val);
 				}
 				else
 				{
-					if (sscanf(val, "MTTS %lld", &d->mtts) == 1)
+					if (sscanf(val, "MTTS %lld", &d->mth->mtts) == 1)
 					{
-						if (HAS_BIT(d->mtts, MTTS_FLAG_256COLORS))
+						if (HAS_BIT(d->mth->mtts, MTTS_FLAG_256COLORS))
 						{
-							SET_BIT(d->comm_flags, COMM_FLAG_256COLORS);
+							SET_BIT(d->mth->comm_flags, COMM_FLAG_256COLORS);
 						}
 
-						if (HAS_BIT(d->mtts, MTTS_FLAG_UTF8))
+						if (HAS_BIT(d->mth->mtts, MTTS_FLAG_UTF8))
 						{
-							SET_BIT(d->comm_flags, COMM_FLAG_UTF8);
+							SET_BIT(d->mth->comm_flags, COMM_FLAG_UTF8);
 						}
 					}
 
 					if (strstr(val, "-256color") || strstr(val, "-256COLOR") || strcasecmp(val, "xterm"))
 					{
-						SET_BIT(d->comm_flags, COMM_FLAG_256COLORS);
+						SET_BIT(d->mth->comm_flags, COMM_FLAG_256COLORS);
 					}
 				}
 				break;
@@ -545,7 +574,7 @@ int process_sb_naws( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 {
 	int i, j;
 
-	d->cols = d->rows = 0;
+	d->mth->cols = d->mth->rows = 0;
 
 	if (skip_sb(d, src, srclen) > srclen)
 	{
@@ -557,23 +586,23 @@ int process_sb_naws( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 		switch (j)
 		{
 			case 0:
-				d->cols += (src[i] == IAC) ? src[i++] * 256 : src[i] * 256;
+				d->mth->cols += (src[i] == IAC) ? src[i++] * 256 : src[i] * 256;
 				break;
 			case 1:
-				d->cols += (src[i] == IAC) ? src[i++] : src[i];
+				d->mth->cols += (src[i] == IAC) ? src[i++] : src[i];
 				break;
 			case 2:
-				d->rows += (src[i] == IAC) ? src[i++] * 256 : src[i] * 256;
+				d->mth->rows += (src[i] == IAC) ? src[i++] * 256 : src[i] * 256;
 				break;
 			case 3:
-				d->rows += (src[i] == IAC) ? src[i++] : src[i];
+				d->mth->rows += (src[i] == IAC) ? src[i++] : src[i];
 				break;
 		}
 	}
 
 	if (TELOPT_DEBUG)
 	{
-		log_descriptor_printf(d, "INFO IAC SB NAWS RCVD ROWS %d COLS %d", d->rows, d->cols);
+		log_descriptor_printf(d, "INFO IAC SB NAWS RCVD ROWS %d COLS %d", d->mth->rows, d->mth->cols);
 	}
 
 	return skip_sb(d, src, srclen);
@@ -647,11 +676,11 @@ int process_sb_new_environ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 					if (!strcasecmp(var, "SYSTEMTYPE") && !strcasecmp(val, "WIN32"))
 					{
-						if (!strcasecmp(d->terminal_type, "ANSI"))
+						if (!strcasecmp(d->mth->terminal_type, "ANSI"))
 						{
-							SET_BIT(d->comm_flags, COMM_FLAG_REMOTEECHO);
+							SET_BIT(d->mth->comm_flags, COMM_FLAG_REMOTEECHO);
 
-							RESTRING(d->terminal_type, "WINDOWS TELNET");
+							RESTRING(d->mth->terminal_type, "WINDOWS TELNET");
 						}
 					}
 
@@ -659,7 +688,7 @@ int process_sb_new_environ( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 					if (!strcasecmp(var, "IPADDRESS"))
 					{
-						RESTRING(d->proxy, val);
+						RESTRING(d->mth->proxy, val);
 					}
 				}
 				break;
@@ -717,14 +746,14 @@ int process_sb_charset( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 		{
 			if (!strcasecmp(val, "UTF-8"))
 			{
-				SET_BIT(d->comm_flags, COMM_FLAG_UTF8);
+				SET_BIT(d->mth->comm_flags, COMM_FLAG_UTF8);
 			}
 		}
 		else if (src[3] == CHARSET_REJECTED)
 		{
 			if (!strcasecmp(val, "UTF-8"))
 			{
-				DEL_BIT(d->comm_flags, COMM_FLAG_UTF8);
+				DEL_BIT(d->mth->comm_flags, COMM_FLAG_UTF8);
 			}
 		}
 		i++;
@@ -742,19 +771,19 @@ int process_do_msdp( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 {
 	int index;
 
-	if (d->msdp_data)
+	if (d->mth->msdp_data)
 	{
 		return 3;
 	}
 
-	d->msdp_data = (struct msdp_data **) calloc(mud->msdp_table_size, sizeof(struct msdp_data *));
+	d->mth->msdp_data = (struct msdp_data **) calloc(mud->msdp_table_size, sizeof(struct msdp_data *));
 
 	for (index = 0 ; index < mud->msdp_table_size ; index++)
 	{
-		d->msdp_data[index] = (struct msdp_data *) calloc(1, sizeof(struct msdp_data));
+		d->mth->msdp_data[index] = (struct msdp_data *) calloc(1, sizeof(struct msdp_data));
 
-		d->msdp_data[index]->flags = msdp_table[index].flags;
-		d->msdp_data[index]->value = strdup("");
+		d->mth->msdp_data[index]->flags = msdp_table[index].flags;
+		d->mth->msdp_data[index]->value = strdup("");
 	}
 
 	log_descriptor_printf(d, "INFO MSDP INITIALIZED");
@@ -838,13 +867,13 @@ int process_sb_msdp( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 int process_do_gmcp( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 {
-	if (d->msdp_data)
+	if (d->mth->msdp_data)
 	{
 		return 3;
 	}
 	log_descriptor_printf(d, "INFO MSDP OVER GMCP INITIALIZED");
 
-	SET_BIT(d->comm_flags, COMM_FLAG_GMCP);
+	SET_BIT(d->mth->comm_flags, COMM_FLAG_GMCP);
 
 	return process_do_msdp(d, src, srclen);
 }
@@ -893,7 +922,7 @@ int process_do_mssp( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 //	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "CREATED",           MSSP_VAL, "2009");
 //	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "ICON",              MSSP_VAL, "http://example.com/icon.gif");
 //	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "LANGUAGE",          MSSP_VAL, "English");
-//	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "LOCATION",          MSSP_VAL, "United States");
+//	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "LOCATION",          MSSP_VAL, "United States of America");
 //	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "MINIMUM AGE",       MSSP_VAL, "13");
 //	cat_sprintf(buffer, "%c%s%c%s", MSSP_VAR, "WEBSITE",           MSSP_VAL, "http://example.com");
 
@@ -957,7 +986,7 @@ int start_mccp2( DESCRIPTOR_DATA *d )
 {
 	z_stream *stream;
 
-	if (d->mccp2)
+	if (d->mth->mccp2)
 	{
 		return TRUE;
 	}
@@ -968,7 +997,7 @@ int start_mccp2( DESCRIPTOR_DATA *d )
 	stream->avail_in    = 0;
 
 	stream->next_out    = mud->mccp_buf;
-	stream->avail_out   = COMPRESS_BUF_SIZE;
+	stream->avail_out   = mud->mccp_len;
 
 	stream->data_type   = Z_ASCII;
 	stream->zalloc      = zlib_alloc;
@@ -993,7 +1022,7 @@ int start_mccp2( DESCRIPTOR_DATA *d )
 		The above call must send all pending output to the descriptor, since from now on we'll be compressing.
 	*/
 
-	d->mccp2 = stream;
+	d->mth->mccp2 = stream;
 
 	return TRUE;
 }
@@ -1001,35 +1030,35 @@ int start_mccp2( DESCRIPTOR_DATA *d )
 
 void end_mccp2( DESCRIPTOR_DATA *d )
 {
-	if (d->mccp2 == NULL)
+	if (d->mth->mccp2 == NULL)
 	{
 		return;
 	}
 
-	d->mccp2->next_in	= NULL;
-	d->mccp2->avail_in	= 0;
+	d->mth->mccp2->next_in	 = NULL;
+	d->mth->mccp2->avail_in	 = 0;
 
-	d->mccp2->next_out	= mud->mccp_buf;
-	d->mccp2->avail_out	= COMPRESS_BUF_SIZE;
+	d->mth->mccp2->next_out	 = mud->mccp_buf;
+	d->mth->mccp2->avail_out = mud->mccp_len;
 
-	if (deflate(d->mccp2, Z_FINISH) != Z_STREAM_END)
+	if (deflate(d->mth->mccp2, Z_FINISH) != Z_STREAM_END)
 	{
 		log_descriptor_printf(d, "end_mccp2: failed to deflate");
 	}
 
-	if (!HAS_BIT(d->comm_flags, COMM_FLAG_DISCONNECT))
+	if (!HAS_BIT(d->mth->comm_flags, COMM_FLAG_DISCONNECT))
 	{
 		process_mccp2(d);
 	}
 
-	if (deflateEnd(d->mccp2) != Z_OK)
+	if (deflateEnd(d->mth->mccp2) != Z_OK)
 	{
 		log_descriptor_printf(d, "end_mccp2: failed to deflateEnd");
 	}
 
-	free(d->mccp2);
+	free(d->mth->mccp2);
 
-	d->mccp2 = NULL;
+	d->mth->mccp2 = NULL;
 
 	log_descriptor_printf(d, "MCCP2: COMPRESSION END");
 
@@ -1039,13 +1068,13 @@ void end_mccp2( DESCRIPTOR_DATA *d )
 
 void write_mccp2( DESCRIPTOR_DATA *d, char *txt, int length)
 {
-	d->mccp2->next_in    = (unsigned char *) txt;
-	d->mccp2->avail_in   = length;
+	d->mth->mccp2->next_in    = (unsigned char *) txt;
+	d->mth->mccp2->avail_in   = length;
 
-	d->mccp2->next_out   = (unsigned char *) mud->mccp_buf;
-	d->mccp2->avail_out  = COMPRESS_BUF_SIZE;
+	d->mth->mccp2->next_out   = (unsigned char *) mud->mccp_buf;
+	d->mth->mccp2->avail_out  = mud->mccp_len;
 
-	if (deflate(d->mccp2, Z_SYNC_FLUSH) != Z_OK)
+	if (deflate(d->mth->mccp2, Z_SYNC_FLUSH) != Z_OK)
 	{
 		return;
 	}
@@ -1058,11 +1087,11 @@ void write_mccp2( DESCRIPTOR_DATA *d, char *txt, int length)
 
 void process_mccp2( DESCRIPTOR_DATA *d )
 {
-	if (write(d->descriptor, mud->mccp_buf, COMPRESS_BUF_SIZE - d->mccp2->avail_out) < 1)
+	if (write(d->descriptor, mud->mccp_buf, mud->mccp_len - d->mth->mccp2->avail_out) < 1)
 	{
 		perror("write in process_mccp2");
 
-		SET_BIT(d->comm_flags, COMM_FLAG_DISCONNECT);
+		SET_BIT(d->mth->comm_flags, COMM_FLAG_DISCONNECT);
 	}
 }
 
@@ -1090,27 +1119,26 @@ int process_do_mccp3( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 int process_sb_mccp3( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 {
-	if (d->mccp3)
+	if (d->mth->mccp3)
 	{
-		log_descriptor_printf(d, "\e[1;31mERROR: MCCP3 ALREADY INITIALIZED");
-		return 5;
+		end_mccp3(d);
 	}
 
-	d->mccp3 = (z_stream *) calloc(1, sizeof(z_stream));
+	d->mth->mccp3 = (z_stream *) calloc(1, sizeof(z_stream));
 
-	d->mccp3->data_type = Z_ASCII;
-	d->mccp3->zalloc    = zlib_alloc;
-	d->mccp3->zfree     = zlib_free;
-	d->mccp3->opaque    = NULL;
+	d->mth->mccp3->data_type = Z_ASCII;
+	d->mth->mccp3->zalloc    = zlib_alloc;
+	d->mth->mccp3->zfree     = zlib_free;
+	d->mth->mccp3->opaque    = NULL;
 
-	if (inflateInit(d->mccp3) != Z_OK)
+	if (inflateInit(d->mth->mccp3) != Z_OK)
 	{
 		log_descriptor_printf(d, "INFO IAC SB MCCP3 FAILED TO INITIALIZE");
 
 		descriptor_printf(d, "%c%c%c", IAC, WONT, TELOPT_MCCP3);
 
-		free(d->mccp3);
-		d->mccp3 = NULL;
+		free(d->mth->mccp3);
+		d->mth->mccp3 = NULL;
 	}
 	else
 	{
@@ -1121,12 +1149,12 @@ int process_sb_mccp3( DESCRIPTOR_DATA *d, unsigned char *src, int srclen )
 
 void end_mccp3( DESCRIPTOR_DATA *d )
 {
-	if (d->mccp3)
+	if (d->mth->mccp3)
 	{
 		log_descriptor_printf(d, "MCCP3: COMPRESSION END");
-		inflateEnd(d->mccp3);
-		free(d->mccp3);
-		d->mccp3 = NULL;
+		inflateEnd(d->mth->mccp3);
+		free(d->mth->mccp3);
+		d->mth->mccp3 = NULL;
 	}
 }
 

@@ -1,4 +1,82 @@
 #include "mud.h"
+#include "mth.h"
+
+void init_mth(void)
+{
+	mud = calloc(1, sizeof(MUD_DATA));
+
+	mud->mccp_len = COMPRESS_BUF_SIZE;
+	mud->mccp_buf = calloc(COMPRESS_BUF_SIZE, sizeof(unsigned char));
+
+	// Initialize the MSDP table
+
+	init_msdp_table();
+}
+
+void init_mth_socket(DESCRIPTOR_DATA *d)
+{
+	d->mth = calloc(1, sizeof(MTH_DATA));
+	d->mth->proxy = (char *) strdup("");
+	d->mth->terminal_type = (char *) strdup("");
+
+	announce_support(d);
+}
+
+void uninit_mth_socket(DESCRIPTOR_DATA *d)
+{
+	unannounce_support(d);
+
+	free(d->mth->proxy);
+	free(d->mth->terminal_type);
+	free(d->mth);
+}
+
+
+
+void arachnos_devel(char *fmt, ...)
+{
+	// mud specific broadcast goes here
+}
+
+void arachnos_mudlist(char *fmt, ...)
+{
+	// mud specific mudlist handler goes here
+}
+
+
+// Utility functions
+
+void log_descriptor_printf(DESCRIPTOR_DATA *d, char *fmt, ...)
+{
+	char buf[MAX_STRING_LENGTH];
+	va_list args;
+
+	va_start(args, fmt);
+
+	vsprintf(buf, fmt, args);
+
+	va_end(args);
+
+	printf("D%d@%s %s\n", d->descriptor, d->host, buf);
+
+	return;
+}
+
+
+int cat_sprintf(char *dest, char *fmt, ...)
+{
+	char buf[MAX_STRING_LENGTH];
+	int size;
+	va_list args;
+
+	va_start(args, fmt);
+	size = vsprintf(buf, fmt, args);
+	va_end(args);
+
+	strcat(dest, buf);
+
+	return size;
+}
 
 char *telcmds[] =
 {

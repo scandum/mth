@@ -9,7 +9,7 @@ http://tintin.sourceforge.net/protocols/msdp/arachnos
 To get the spider to recognise that you have Arachnos support you should update
 MSSP and set the INTERMUD variable to Arachnos. 
 
-By default MTH only includes the basics for a developer channel. In Lola 1.4 the
+By default MTH only includes the basics for a developer channel. In LoLa 1.4 the
 code for developers to use the channel is as following:
 
 void do_devtalk (CHAR_DATA * ch, char *argument)
@@ -64,7 +64,7 @@ MUDs.
 
 In addition Arachnos allows the sending of MUDLIST messages which contain
 updates of other MUDs available on the network. This is handled as following
-in Lola 1.4:
+in LoLa 1.4:
 
 char *mudlist[50];
 

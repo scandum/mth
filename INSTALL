@@ -1,0 +1,18 @@
+Installation should be fairly straight forward.
+
+1. Call init_mth() when the server starts up.
+
+2. Call init_mth_socket() when a new socket is created.
+
+3. Call uninit_mth_socket() when a new socket is disconnected or before
+   performing a copyover.
+
+4. Run data read from sockets through translate_telopts()
+
+5. Send out going data through write_mccp2(d, txt, length) if mccp2 is
+   enabled.
+
+6. Add msdp_send_update() call to periodic update routine, at least
+   twice a second.
+
+7. Configure MSSP data in telopts.c

@@ -27,7 +27,7 @@
       nRead = read( d->descriptor, bufin, sizeof( bufin ) - 10 - iStart );
       if( nRead > 0 )
       {
-         iStart += translate_telopts(d, bufin, nRead, d->inbuf + iStart);
+         iStart += translate_telopts(d, (unsigned char *) bufin, nRead, (unsigned char *) d->inbuf, iStart);
 
          if( d->inbuf[iStart - 1] == '\n' )
             break;

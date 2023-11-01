@@ -3,6 +3,8 @@
 #include "mud.h"
 #include "mth.h"
 
+MUD_DATA *mud;
+
 /*
 	This file is primarily for debugging so the source code can be
 	compiled, modified, and tested without having to plug it into an
@@ -54,6 +56,11 @@ int write_to_descriptor(DESCRIPTOR_DATA *d, char *txt, int length)
 	if (d->descriptor)
 	{
 		// MTH addition
+
+		if (HAS_BIT(d->mth->comm_flags, COMM_FLAG_DISCONNECT))
+		{
+			return 0;
+		}
 
 		if (d->mth->mccp2)
 		{

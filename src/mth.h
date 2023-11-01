@@ -118,7 +118,7 @@ struct mth_data
 	z_stream          * mccp3;
 };
 
-MUD_DATA *mud;
+extern MUD_DATA *mud;
 
 /*
 	telopt.c

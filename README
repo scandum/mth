@@ -1,6 +1,9 @@
-MTH (Mud Telopt Handler) is a telnet handler which supports the
+# MTH (Mud Telopt Handler)
+
+Telnet handler which supports the
 following TELNET options.
 
+```
 CHARSET      - Reports the character sets supported by the client.
 ECHO         - Allows toggling local echo.
 EOR          - Allows prompt marking.
@@ -13,6 +16,7 @@ MTTS         - Reports various features supported by the client.
 NAWS         - Reports the client's window size.
 NEW_ENVIRON  - Reports various system variables.
 TTYPE        - Reports the client's terminal type.
+```
 
 MTH has a permissive license, just leave the copyright notice in the
 original sources, otherwise you can do as you please with it.
@@ -23,3 +27,28 @@ there so you can test the code and provide you with an example
 implementation.
 
 Client side MCCP3 support is currently only supported by TinTin++.
+
+## Building standalone
+
+`$ cd Sources/mth`
+`$ make .`
+
+## Incorporating via SPM
+
+Add the following to your Package.swift:
+
+```swift
+.package(url: "https://github.com/ncmud/mth.git", branch: "spm")
+```
+
+Incorporate "mth" into your targets dependencies:
+
+```swift
+.target(
+    name: "MyTarget",
+    dependencies: [
+        "mth",
+    ]
+),
+```
+

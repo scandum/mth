@@ -1,4 +1,4 @@
-CFLAGS  = -DLINUX 
+CFLAGS  = -DLINUX
 LIBS    = -lz
 CC      = gcc -Wall -g
 
